@@ -72,6 +72,25 @@ void DTLS_RECORD_LAYER_clear(RECORD_LAYER *rl)
     d->buffered_app_data = buffered_app_data;
 }
 
+/*
+ * Checks for application data set aside while a handshake was in progress.
+ * dtls1_read_bytes() only returns it once the handshake has finished.
+ */
+int DTLS_RECORD_LAYER_buffered_app_data_pending(const RECORD_LAYER *rl)
+{
+    TLS_RECORD *rdata;
+    pitem *item, *iter;
+
+    iter = pqueue_iterator(rl->d->buffered_app_data);
+    while ((item = pqueue_next(&iter)) != NULL) {
+        rdata = item->data;
+        if (rdata->length > 0)
+            return 1;
+    }
+
+    return 0;
+}
+
 static int dtls_buffer_record(SSL_CONNECTION *s, TLS_RECORD *rec)
 {
     TLS_RECORD *rdata;
@@ -284,6 +303,8 @@ start:
                     SSLfatal(sc, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
                     return -1;
                 }
+                /* This must only ever happen once per handshake */
+                sc->dtls13_process_hello = 0;
 
                 /*
                  * Read the Buffered epoch
